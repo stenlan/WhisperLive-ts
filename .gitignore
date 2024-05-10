@@ -1,0 +1,3 @@
+*.egg-info
+.idea
+whisper_live/__pycache__
