@@ -800,7 +800,8 @@ class ServeClientFasterWhisper(ServeClientBase):
             language=self.language,
             task=self.task,
             vad_filter=self.use_vad,
-            vad_parameters=self.vad_parameters if self.use_vad else None)
+            vad_parameters=self.vad_parameters if self.use_vad else None,
+            word_timestamps=True)
 
         if self.language is None and info is not None:
             self.set_language(info)
@@ -897,7 +898,7 @@ class ServeClientFasterWhisper(ServeClientBase):
                 logging.error(f"[ERROR]: Failed to transcribe audio chunk: {e}")
                 time.sleep(0.01)
 
-    def format_segment(self, start, end, text):
+    def format_segment(self, start, end, text, words):
         """
         Formats a transcription segment with precise start and end times alongside the transcribed text.
 
@@ -914,7 +915,13 @@ class ServeClientFasterWhisper(ServeClientBase):
         return {
             'start': "{:.3f}".format(start),
             'end': "{:.3f}".format(end),
-            'text': text
+            'text': text,
+            'words': [{
+                'start': "{:.3f}".format(word.start),
+                'end': "{:.3f}".format(word.end),
+                'word': word.word,
+                'probability': word.probability,
+            } for word in words]
         }
 
     def update_segments(self, segments, duration):
@@ -952,14 +959,15 @@ class ServeClientFasterWhisper(ServeClientBase):
                 if s.no_speech_prob > self.no_speech_thresh:
                     continue
 
-                self.transcript.append(self.format_segment(start, end, text_))
+                self.transcript.append(self.format_segment(start, end, text_, s.words))
                 offset = min(duration, s.end)
 
         self.current_out += segments[-1].text
         last_segment = self.format_segment(
             self.timestamp_offset + segments[-1].start,
             self.timestamp_offset + min(duration, segments[-1].end),
-            self.current_out
+            self.current_out,
+            segments[-1].words
         )
 
         # if same incomplete segment is seen multiple times then update the offset
@@ -975,7 +983,8 @@ class ServeClientFasterWhisper(ServeClientBase):
                 self.transcript.append(self.format_segment(
                     self.timestamp_offset,
                     self.timestamp_offset + duration,
-                    self.current_out
+                    self.current_out,
+                    segments[-1].words
                 ))
             self.current_out = ''
             offset = duration
